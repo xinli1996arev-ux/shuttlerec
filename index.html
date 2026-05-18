@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>下班哪儿去</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f4f1;color:#3a3835}
+
+#app{display:flex;flex-direction:column;height:100vh}
+
+/* Search bar */
+#search-panel{flex-shrink:0;padding:16px 20px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.08);z-index:10;position:relative}
+#search-panel h1{font-size:17px;font-weight:600;margin-bottom:10px;color:#4a4642}
+#search-panel h1 span{font-weight:400;font-size:13px;color:#999;margin-left:8px}
+.search-row{display:flex;gap:10px;align-items:center}
+#search-input{flex:1;max-width:480px;padding:10px 14px;border:1.5px solid #ddd;border-radius:8px;font-size:15px;outline:none;transition:border-color .2s}
+#search-input:focus{border-color:#8e9ca8}
+#search-btn{padding:10px 24px;background:rgba(0,72,152,.7);color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;transition:background .2s}
+#search-btn:hover{background:rgba(0,72,152,.85)}
+#search-btn:disabled{opacity:.5;cursor:not-allowed}
+.hint{font-size:12px;color:#aaa;margin-top:6px}
+
+/* Main content */
+#main-content{flex:1;display:flex;overflow:hidden;position:relative}
+
+/* Results panel */
+#results-panel{width:380px;flex-shrink:0;overflow-y:auto;padding:16px;background:#fafaf8;border-right:1px solid #e8e6e2;transition:transform .3s}
+#results-panel.empty{display:flex;align-items:center;justify-content:center}
+.empty-state{text-align:center;color:#c5c0b8}
+.empty-state .icon{font-size:48px;margin-bottom:12px}
+.empty-state p{font-size:14px;line-height:1.6}
+
+.route-card{background:#fff;border-radius:10px;padding:16px;margin-bottom:12px;cursor:pointer;border:2px solid transparent;transition:all .2s;position:relative}
+.route-card:hover{box-shadow:0 2px 12px rgba(0,0,0,.08);transform:translateY(-1px)}
+.route-card.active{border-color:var(--route-color)}
+.route-card .badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;color:#fff;margin-bottom:8px}
+.route-card .route-name{font-size:15px;font-weight:600;margin-bottom:4px}
+.route-card .station-name{font-size:13px;color:#777;margin-bottom:8px}
+.route-card .dist-row{display:flex;align-items:center;gap:8px;font-size:14px}
+.route-card .dist-val{font-size:22px;font-weight:700;color:#4a4642}
+.route-card .dist-unit{font-size:13px;color:#999}
+.route-card .mode-tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;margin-top:6px}
+.mode-tag.walk{background:#e8f5e9;color:#388e3c}
+.mode-tag.ride{background:#e3f2fd;color:#1976d2}
+.mode-tag.transit{background:#fff3e0;color:#e65100}
+
+.line-color-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:middle}
+
+/* Map */
+#map-container{flex:1;position:relative}
+#map-container .amap-logo{display:none!important}
+
+/* Loading overlay */
+#loading-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,.7);z-index:999;display:none;align-items:center;justify-content:center}
+#loading-overlay.show{display:flex}
+.spinner{width:40px;height:40px;border:3px solid #e0dcd5;border-top-color:#7b8c7b;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Route detail in card */
+.route-detail{margin-top:10px;padding-top:10px;border-top:1px solid #eee;font-size:12px;color:#999}
+.route-detail .stations-list{display:flex;flex-wrap:wrap;gap:2px 6px}
+.route-detail .stations-list span{white-space:nowrap}
+.route-detail .stations-list .stop{color:#e65100;font-weight:600}
+
+/* Responsive */
+@media(max-width:768px){
+  #results-panel{position:absolute;bottom:0;left:0;right:0;width:100%;max-height:45vh;z-index:10;border-radius:16px 16px 0 0;border-right:none;border-top:1px solid #e8e6e2;transform:translateY(0)}
+  #map-container{height:100%}
+}
+
+/* Zoom slider */
+.zoom-slider{position:absolute;right:16px;top:50%;transform:translateY(-50%);z-index:100;display:flex;flex-direction:column;align-items:center;gap:4px}
+.zoom-slider .zoom-btn{width:32px;height:32px;border-radius:6px;background:#fff;border:1px solid #ddd;cursor:pointer;font-size:18px;line-height:30px;text-align:center;color:#555;user-select:none;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.zoom-slider .zoom-btn:hover{background:#f0f0f0}
+.zoom-slider .track{width:4px;height:240px;background:#ddd;border-radius:2px;position:relative;cursor:pointer}
+.zoom-slider .track-fill{position:absolute;bottom:0;left:0;right:0;background:#004898;border-radius:2px}
+.zoom-slider .thumb{position:absolute;left:-7px;width:18px;height:18px;border-radius:50%;background:#004898;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);cursor:grab;transform:translateY(-50%)}
+.zoom-slider .thumb:active{cursor:grabbing}
+
+/* Override AMap default label blue border */
+.amap-marker-label, .amap-label {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="search-panel">
+    <h1>🚌 下班哪儿去 <span>Shunyi to Everywhere</span></h1>
+    <div class="search-row">
+      <input id="search-input" type="text" placeholder="输入目的地，如：保福寺银谷大厦、国贸地铁站..." autocomplete="off">
+      <button id="search-btn" onclick="doSearch()">查询</button>
+    </div>
+    <p class="hint">输入地址后从下拉提示中选取，或直接输入后点击查询</p>
+  </div>
+  <div id="main-content">
+    <div id="results-panel" class="empty">
+      <div class="empty-state">
+        <div class="icon">🗺️</div>
+        <p>输入目的地<br>查看最佳班车线路推荐</p>
+      </div>
+    </div>
+    <div id="map-container">
+      <div class="zoom-slider" id="zoom-slider">
+        <div class="zoom-btn" id="zoom-in">+</div>
+        <div class="track" id="zoom-track">
+          <div class="track-fill" id="zoom-fill"></div>
+          <div class="thumb" id="zoom-thumb"></div>
+        </div>
+        <div class="zoom-btn" id="zoom-out">−</div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="loading-overlay"><div class="spinner"></div></div>
+
+<script>
+// ============================================================
+// 0. Security Config (MUST be set before AMap SDK loads)
+// ============================================================
+window._AMapSecurityConfig = { securityJsCode: "b02fb99e1cb584e593406bb4760de2f3" };
+
+// ============================================================
+// 1. Embedded Data
+// ============================================================
+const SHUTTLE_DATA = {"origin":[116.641513,40.054711],"stations":{"北京市顺义区鑫桥中路3号院":[116.641513,40.054711],"国展地铁":[116.5565,40.0698],"名佳花园":[116.41958,40.106117],"黄平西路南口站牌":[116.395,40.103],"平西府地铁":[116.391003,40.126303],"东亚上北":[116.377156,40.103737],"回龙观东大街":[116.36331,40.081171],"霍营地铁":[116.368207,40.076214],"羊各庄新村":[116.446433,40.117694],"望都新地":[116.415059,40.113201],"天通苑北地铁":[116.41315,40.083552],"天通苑地铁":[116.422633,40.067359],"三元桥":[116.454276,39.957974],"太阳宫":[116.447464,39.972633],"和平里":[116.421256,39.959266],"德外桥":[116.379431,39.959109],"积水潭地铁":[116.375059,39.942643],"北太平庄":[116.358141,39.958326],"四通桥":[116.324742,39.967127],"白石桥":[116.327251,39.946838],"紫竹桥":[116.308747,39.942817],"北洼路":[116.301449,39.932146],"车道沟":[116.292,39.949],"惠新东桥":[116.4228,39.988829],"远大路口":[116.348791,39.95648],"定慧桥":[116.274781,39.924132],"五棵松":[116.275434,39.913393],"红军营东路南口":[116.437231,40.022609],"北苑家园":[116.430911,40.041784],"北苑地铁":[116.435,40.042],"立水桥地铁":[116.41435,40.056198],"常营民族家园":[116.58169,39.929956],"黄渠地铁站":[116.578266,39.924201],"裕裢坡地铁":[116.546205,39.926229],"青年路地铁":[116.514144,39.928258],"红领巾桥东":[116.489142,39.922758],"慈云寺桥北":[116.489405,39.915201],"双井地铁":[116.456081,39.892967],"劲松地铁":[116.461303,39.882462],"刘家窑地铁":[116.422214,39.858123],"宋家庄地铁":[116.427,39.846],"高教园地铁":[116.272752,40.151534],"沙河地铁":[116.270449,40.141587],"沙河北大桥车站":[116.268146,40.13164],"安慧桥":[116.407635,39.988486],"安贞桥":[116.406952,39.968847],"蒋宅口公交站":[116.407852,39.959896],"安定门地铁":[116.406499,39.953003],"苏州桥":[116.305961,39.963601],"花园桥":[116.310129,39.932328],"六里桥":[116.306163,39.883185],"六里桥南":[116.311098,39.880723],"通州北关":[116.653106,39.918647],"杨闸环岛":[116.599215,39.913126],"中交第一公路局":[116.578,39.895],"耿庄桥南":[116.688776,39.917313],"玉桥北里西门":[116.681182,39.893708],"漫春园北":[116.657611,39.891259],"果园地铁":[116.641,39.891],"西大街爱琴海购物中心西南门":[116.658,39.907],"西门路口东公交站":[116.645447,39.906858],"通州北苑路口东":[116.638139,39.906022],"翠屏西路北口公交站":[116.643659,39.893108],"北探小区公交站":[116.635234,39.88684],"半壁店新村公交站":[116.636,39.878],"万盛西":[116.63216,39.863328],"疃里新村":[116.697108,39.948826],"净水东路北口公交站":[116.698979,39.88714],"梨园东里南区":[116.683254,39.883081],"临河里地铁公交站":[116.678811,39.875496],"土桥地铁":[116.686,39.872],"花石匠":[116.693189,39.868504],"天秀路口南":[116.301227,40.009037],"马连洼路口南":[116.275921,40.031974],"西北旺地铁":[116.250615,40.054911],"永靓家园":[116.245722,40.052733],"仁和公园":[116.671673,40.106069],"顺义地铁站":[116.657023,40.129994],"俸伯地铁":[116.691277,40.154051],"大红门":[116.379568,39.825287],"马家楼":[116.349816,39.827249],"花乡东桥地铁":[116.320064,39.829211],"怡海花园":[116.30127,39.833836],"南邵地铁":[116.2843,40.206351],"昌平地铁":[116.231034,40.220952],"豹房公交站":[116.4052,40.002509],"大屯路国家动物博物馆":[116.381429,40.002551],"北沙滩中电科大厦":[116.36987,40.004081],"清河北京京北医院":[116.350106,40.029316],"永泰庄地铁":[116.35156,40.033958],"柳芳地铁":[116.438563,39.954493],"东直门北公交站":[116.433775,39.943781],"东四十条地铁":[116.425017,39.933624],"四惠东地铁":[116.515664,39.908495],"四惠地铁":[116.502957,39.908447],"国贸地铁":[116.45885,39.90986],"望京南湖东园":[116.465383,40.001287],"芍药居地铁":[116.437891,39.982785],"马甸桥地铁":[116.381575,39.968933],"小营北路天宫院小吃":[116.427,40.002],"大屯东地铁站":[116.409792,40.002661],"健翔桥中国音乐学院":[116.379021,39.991518],"志新桥志新村小区":[116.367394,39.989812],"保福寺银谷大厦":[116.33426,39.986918],"潘家园地铁":[116.461407,39.877842],"洋桥洋桥东里":[116.384234,39.85863],"角门西地铁站":[116.371154,39.84585],"车公庄地铁":[116.341583,39.934272],"复兴门":[116.352746,39.905849],"西便门":[116.356873,39.898149],"广安门内地铁":[116.357879,39.892453],"陶然亭地铁":[116.380559,39.878554],"东坝地铁站":[116.547126,39.965732],"化工桥东公交站":[116.548826,39.84524],"亦庄桥":[116.478348,39.8096],"三元桥地铁":[116.454276,39.957974]},"routes":{"1-摆渡线(17:15)":["国展地铁"],"2-回龙观线":["名佳花园","黄平西路南口站牌","平西府地铁","东亚上北","回龙观东大街","霍营地铁"],"3-天通苑线":["羊各庄新村","望都新地","天通苑北地铁","天通苑地铁"],"4-积水潭线路":["三元桥","太阳宫","和平里","德外桥","积水潭地铁"],"5-车道沟线":["北太平庄","四通桥","白石桥","紫竹桥","北洼路","车道沟"],"6-五棵松线":["惠新东桥","远大路口","定慧桥","五棵松"],"7-立水桥线":["红军营东路南口","北苑家园","北苑地铁","立水桥地铁"],"8-慈云寺线":["常营民族家园","黄渠地铁站","裕裢坡地铁","青年路地铁","红领巾桥东","慈云寺桥北"],"9-宋家庄线":["双井地铁","劲松地铁","刘家窑地铁","宋家庄地铁"],"10-沙河线":["高教园地铁","沙河地铁","沙河北大桥车站"],"11-安定门线":["安慧桥","安贞桥","蒋宅口公交站","安定门地铁"],"12-六里桥线":["苏州桥","花园桥","六里桥","六里桥南"],"13-通州一线":["通州北关","杨闸环岛","中交第一公路局"],"13-通州二线":["通州北关","耿庄桥南","玉桥北里西门","漫春园北","果园地铁","中交第一公路局"],"13-通州三线":["西大街爱琴海购物中心西南门","西门路口东公交站","通州北苑路口东","翠屏西路北口公交站","北探小区公交站","半壁店新村公交站","万盛西"],"13-通州四线":["疃里新村","净水东路北口公交站","梨园东里南区","临河里地铁公交站","土桥地铁","花石匠"],"14-西北旺线":["天秀路口南","马连洼路口南","西北旺地铁","永靓家园"],"15-顺义线":["仁和公园","顺义地铁站","俸伯地铁"],"16-丰台线":["大红门","马家楼","花乡东桥地铁","怡海花园"],"17-昌平线":["南邵地铁","昌平地铁"],"18-清河线":["豹房公交站","大屯路国家动物博物馆","北沙滩中电科大厦","清河北京京北医院","永泰庄地铁"],"19-朝阳门线":["柳芳地铁","东直门北公交站","东四十条地铁"],"20-国贸线":["四惠东地铁","四惠地铁","国贸地铁"],"21-马甸桥线":["望京南湖东园","芍药居地铁","马甸桥地铁"],"22-保福寺线":["小营北路天宫院小吃","大屯东地铁站","健翔桥中国音乐学院","志新桥志新村小区","保福寺银谷大厦"],"23-角门线":["潘家园地铁","洋桥洋桥东里","角门西地铁站"],"24-西二环线":["车公庄地铁","复兴门","西便门","广安门内地铁","陶然亭地铁"],"25-亦庄线":["东坝地铁站","化工桥东公交站","亦庄桥"],"摆渡线(18:15/20:00)":["三元桥地铁"]}};
+
+// ============================================================
+// 2. Color Palette — 27 distinct colors, moderate-high saturation
+//    HSL: H evenly spaced 360/27, S 52-62%, L 44-52%
+// ============================================================
+const ROUTE_COLORS = [
+  "#CC4B5E","#D4723E","#CB8644","#B6943B","#38997A",
+  "#2E7F7A","#3E759E","#4568A2","#4F5FB2","#6B52B5",
+  "#8949AE","#B7406D","#CF4355","#C4605D","#B76D50",
+  "#48A392","#3F8F9E","#467C9C","#507EA8","#657EBA",
+  "#7C6FAD","#946CA8","#A86982","#B06960","#9C7E4F",
+  "#509C58","#638895"
+];
+const SELECTED_ROUTE_COLOR = "#004898";
+
+const ROUTE_KEYS = Object.keys(SHUTTLE_DATA.routes);
+const ROUTE_COLOR_MAP = {};
+ROUTE_KEYS.forEach((key, i) => { ROUTE_COLOR_MAP[key] = ROUTE_COLORS[i % ROUTE_COLORS.length]; });
+
+// ============================================================
+// 3. App State
+// ============================================================
+const State = {
+  map: null,
+  autoComplete: null,
+  geocoder: null,
+  destination: null,       // {name, lng, lat}
+  results: null,           // [{routeKey, routeName, stationName, walkDist, lng, lat}]
+  selectedIdx: 0,          // 0=best, 1=backup
+  selectedRouteKey: null,  // which route is highlighted on map
+  routePolylines: [],      // current map polylines
+  lastMilePolylines: [],   // last mile path on map
+  markers: [],             // current map markers
+  infoWindows: [],
+};
+
+// ============================================================
+// 4. Utilities
+// ============================================================
+function haversineKm(lng1, lat1, lng2, lat2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function formatDist(meters) {
+  if (meters < 1000) return Math.round(meters) + 'm';
+  return (meters/1000).toFixed(1) + 'km';
+}
+
+function formatDuration(seconds) {
+  if (seconds < 60) return seconds + '秒';
+  if (seconds < 3600) return Math.round(seconds/60) + '分钟';
+  const h = Math.floor(seconds/3600);
+  const m = Math.round((seconds%3600)/60);
+  return h + '小时' + (m > 0 ? m + '分钟' : '');
+}
+
+function getModeInfo(dist) {
+  if (dist <= 500) return { type: 'walk', label: '步行', cls: 'walk' };
+  if (dist <= 3000) return { type: 'ride', label: '骑行', cls: 'ride' };
+  return { type: 'transit', label: '公交', cls: 'transit' };
+}
+
+function showLoading() { document.getElementById('loading-overlay').classList.add('show'); }
+function hideLoading() { document.getElementById('loading-overlay').classList.remove('show'); }
+
+// ============================================================
+// 5. AMap SDK Bootstrap
+// ============================================================
+function loadAMapSDK() {
+  return new Promise((resolve, reject) => {
+    if (window.AMap && State.map) return resolve();
+    const script = document.createElement('script');
+    script.src = "https://webapi.amap.com/maps?v=2.0&key=52e1b991dff66a9790ba4de62984409d&plugin=AMap.AutoComplete,AMap.Geocoder,AMap.Walking,AMap.Riding,AMap.Transfer,AMap.Driving";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('AMap SDK load failed'));
+    document.head.appendChild(script);
+  });
+}
+
+// ============================================================
+// 6. Map Service
+// ============================================================
+const MapService = {
+  init() {
+    return new Promise((resolve) => {
+      AMap.plugin(['AMap.AutoComplete','AMap.Geocoder','AMap.Walking','AMap.Riding','AMap.Transfer','AMap.Driving'], () => {
+        State.map = new AMap.Map('map-container', {
+          zoom: 11,
+          center: [116.45, 39.95],
+          mapStyle: 'amap://styles/light',
+          resizeEnable: true,
+        });
+        State.geocoder = new AMap.Geocoder({ city: '北京' });
+
+        // AutoComplete with input binding for dropdown suggestions
+        State.autoComplete = new AMap.AutoComplete({
+          input: 'search-input',
+          city: '北京',
+          citylimit: true,
+        });
+        State.autoComplete.on('select', (e) => {
+          if (e.poi && e.poi.location) {
+            document.getElementById('search-input').value = e.poi.name || e.poi.address;
+            doSearch();
+          }
+        });
+
+        resolve();
+      });
+    });
+  },
+
+  clearAll() {
+    State.map.clearMap();
+    State.routePolylines = [];
+    State.lastMilePolylines = [];
+    State.markers = [];
+    State.infoWindows.forEach(iw => iw.close());
+    State.infoWindows = [];
+    // Redraw overview routes after clearing
+    this.drawAllRoutes();
+  },
+
+  addMarker(lng, lat, title, opts = {}) {
+    const bg = opts.labelBg || 'rgba(255,255,255,.92)';
+    const marker = new AMap.Marker({
+      position: [lng, lat],
+      title: title,
+      label: opts.labelContent ? {
+        content: `<div style="background:${bg};padding:3px 7px;border-radius:4px;font-size:12px;white-space:nowrap;color:#333;pointer-events:none">${opts.labelContent}</div>`,
+        offset: new AMap.Pixel(0, -20),
+        direction: 'top',
+      } : undefined,
+      icon: opts.icon || undefined,
+      zIndex: opts.zIndex || 100,
+    });
+    State.map.add(marker);
+    State.markers.push(marker);
+    return marker;
+  },
+
+  addPolyline(path, color, opts = {}) {
+    const poly = new AMap.Polyline({
+      path: path,
+      strokeColor: color,
+      strokeWeight: opts.weight || 4,
+      strokeOpacity: opts.opacity || 0.8,
+      strokeStyle: opts.dashed ? 'dashed' : 'solid',
+      lineJoin: 'round',
+      zIndex: opts.zIndex || 50,
+    });
+    State.map.add(poly);
+    if (opts.group === 'lastmile') {
+      State.lastMilePolylines.push(poly);
+    } else {
+      State.routePolylines.push(poly);
+    }
+    return poly;
+  },
+
+  addInfoWindow(content, lng, lat) {
+    const iw = new AMap.InfoWindow({
+      content: content,
+      offset: new AMap.Pixel(0, -30),
+    });
+    iw.open(State.map, [lng, lat]);
+    State.infoWindows.push(iw);
+    return iw;
+  },
+
+  drivePath(fromLng, fromLat, toLng, toLat) {
+    return new Promise((resolve) => {
+      const driving = new AMap.Driving({ city: '北京' });
+      const timer = setTimeout(() => resolve(null), 6000);
+      driving.search([fromLng, fromLat], [toLng, toLat], (status, result) => {
+        clearTimeout(timer);
+        if (status === 'complete' && result.routes && result.routes[0]) {
+          const path = [];
+          result.routes[0].steps.forEach(step => {
+            if (step.path) step.path.forEach(p => path.push([p.lng, p.lat]));
+          });
+          resolve(path.length > 0 ? { path, time: result.routes[0].time || 0 } : null);
+        } else {
+          resolve(null);
+        }
+      });
+    });
+  },
+
+  fitView(overlays) {
+    if (overlays.length === 0) return;
+    // Collect all overlays that have getBounds (markers, polylines)
+    const items = overlays.filter(o => o && typeof o.getBounds === 'function');
+    if (items.length > 0) {
+      State.map.setFitView(items);
+    }
+  },
+};
+
+// ============================================================
+// 7. Search Service
+// ============================================================
+const SearchService = {
+  searchAddress(keyword) {
+    return new Promise((resolve) => {
+      State.autoComplete.search(keyword, (status, result) => {
+        if (status === 'complete' && result.tips && result.tips.length > 0) {
+          // Filter to valid tips with location
+          const tips = result.tips.filter(t => t.location && t.location.lng && t.location.lat);
+          resolve(tips);
+        } else {
+          resolve([]);
+        }
+      });
+    });
+  },
+
+  geocode(address) {
+    return new Promise((resolve) => {
+      State.geocoder.getLocation(address, (status, result) => {
+        if (status === 'complete' && result.info === 'OK' && result.geocodes.length > 0) {
+          const g = result.geocodes[0];
+          resolve({ name: g.address || g.formattedAddress || address, lng: g.location.lng, lat: g.location.lat });
+        } else {
+          resolve(null);
+        }
+      });
+    });
+  },
+
+  async resolveDestination(text) {
+    // Try autocomplete first
+    const tips = await this.searchAddress(text);
+    if (tips.length > 0) {
+      const t = tips[0];
+      return { name: t.name || t.district + t.address || text, lng: t.location.lng, lat: t.location.lat };
+    }
+    // Fallback to geocoding
+    return await this.geocode(text);
+  },
+};
+
+// ============================================================
+// 8. Route Engine
+// ============================================================
+const RouteEngine = {
+  async findBestRoutes(destLng, destLat) {
+    // Phase 1: Haversine filter — compute distance from all 116 stations
+    const candidates = [];
+    for (const [name, coords] of Object.entries(SHUTTLE_DATA.stations)) {
+      if (name === '北京市顺义区鑫桥中路3号院') continue; // skip origin
+      const dist = haversineKm(coords[0], coords[1], destLng, destLat) * 1000; // meters
+      candidates.push({ name, lng: coords[0], lat: coords[1], haversineDist: dist });
+    }
+
+    // Sort by haversine, take top 20 (allow margin)
+    candidates.sort((a, b) => a.haversineDist - b.haversineDist);
+    const topN = candidates.slice(0, 20);
+
+    // Phase 2: Walking distance for top candidates (batched, concurrency=5)
+    const BATCH_SIZE = 5;
+    const walkingResults = [];
+    for (let i = 0; i < topN.length; i += BATCH_SIZE) {
+      const batch = topN.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batch.map(c => RouteEngine.walkDistance(c.lng, c.lat, destLng, destLat))
+      );
+      walkingResults.push(...batchResults);
+      if (i + BATCH_SIZE < topN.length) {
+        await new Promise(r => setTimeout(r, 300));
+      }
+    }
+
+    // Merge results
+    const merged = topN.map((c, i) => ({
+      ...c,
+      walkDist: walkingResults[i] !== null ? walkingResults[i] : c.haversineDist,
+      isExact: walkingResults[i] !== null,
+    }));
+
+    // Phase 3: Group by route, keep best station per route
+    const routeBest = {};
+    for (const item of merged) {
+      // Find which routes contain this station
+      for (const [routeKey, stationNames] of Object.entries(SHUTTLE_DATA.routes)) {
+        if (stationNames.includes(item.name)) {
+          if (!routeBest[routeKey] || item.walkDist < routeBest[routeKey].walkDist) {
+            routeBest[routeKey] = {
+              routeKey,
+              stationName: item.name,
+              stationLng: item.lng,
+              stationLat: item.lat,
+              walkDist: item.walkDist,
+            };
+          }
+        }
+      }
+    }
+
+    // Phase 4: Sort routes by walking distance
+    const sorted = Object.values(routeBest).sort((a, b) => a.walkDist - b.walkDist);
+    return sorted;
+  },
+
+  walkDistance(fromLng, fromLat, toLng, toLat) {
+    return new Promise((resolve) => {
+      const walking = new AMap.Walking({ city: '北京' });
+      const timer = setTimeout(() => resolve(null), 5000); // 5s timeout
+
+      walking.search([fromLng, fromLat], [toLng, toLat], (status, result) => {
+        clearTimeout(timer);
+        if (status === 'complete' && result.info === 'OK' && result.routes && result.routes.length > 0) {
+          resolve(result.routes[0].distance); // meters
+        } else {
+          resolve(null);
+        }
+      });
+    });
+  },
+};
+
+// ============================================================
+// 9. Last Mile Service
+// ============================================================
+const LastMileService = {
+  getPath(fromLng, fromLat, toLng, toLat, modeType) {
+    return new Promise((resolve) => {
+      if (modeType === 'walk') {
+        const walking = new AMap.Walking({ city: '北京' });
+        walking.search([fromLng, fromLat], [toLng, toLat], (status, result) => {
+          if (status === 'complete' && result.info === 'OK' && result.routes[0]) {
+            const r = result.routes[0];
+            resolve({ path: this._extractPath(r), distance: r.distance, duration: r.time, steps: r.steps });
+          } else {
+            resolve(null);
+          }
+        });
+      } else if (modeType === 'ride') {
+        const riding = new AMap.Riding({ city: '北京' });
+        riding.search([fromLng, fromLat], [toLng, toLat], (status, result) => {
+          if (status === 'complete' && result.info === 'OK' && result.routes[0]) {
+            const r = result.routes[0];
+            resolve({ path: this._extractPath(r), distance: r.distance, duration: r.time, steps: r.steps });
+          } else {
+            resolve(null);
+          }
+        });
+      } else {
+        const transfer = new AMap.Transfer({ city: '北京', citylimit: true });
+        transfer.search([fromLng, fromLat], [toLng, toLat], (status, result) => {
+          if (status === 'complete' && result.info === 'OK' && result.plans && result.plans[0]) {
+            const r = result.plans[0];
+            const segments = r.segments || [];
+            const path = [];
+            segments.forEach(seg => {
+              if (seg.walking_space && seg.walking_space.path) {
+                seg.walking_space.path.forEach(p => path.push([p.lng, p.lat]));
+              }
+              if (seg.buslines && seg.buslines[0] && seg.buslines[0].path) {
+                seg.buslines[0].path.forEach(p => path.push([p.lng, p.lat]));
+              }
+            });
+            resolve({ path, distance: r.distance, duration: r.time, steps: segments, isTransit: true });
+          } else {
+            resolve(null);
+          }
+        });
+      }
+    });
+  },
+
+  _extractPath(route) {
+    const path = [];
+    if (route.steps) {
+      route.steps.forEach(step => {
+        if (step.path) step.path.forEach(p => path.push([p.lng, p.lat]));
+      });
+    }
+    return path;
+  },
+};
+
+// ============================================================
+// 10. UI Manager
+// ============================================================
+const UIManager = {
+  renderResults(results) {
+    const panel = document.getElementById('results-panel');
+    if (!results || results.length === 0) {
+      panel.className = 'empty';
+      panel.innerHTML = `<div class="empty-state"><div class="icon">📭</div><p>未找到匹配线路<br>请尝试更精确的地址</p></div>`;
+      return;
+    }
+
+    panel.className = '';
+    const best = results[0];
+    const backup = results.length > 1 ? results[1] : null;
+    const color0 = ROUTE_COLOR_MAP[best.routeKey];
+
+    let html = '';
+    html += this._renderCard(best, '⭐ 最佳推荐', color0, 'best active', 0);
+    if (backup) {
+      const color1 = ROUTE_COLOR_MAP[backup.routeKey];
+      html += this._renderCard(backup, '🔄 备选方案', color1, 'backup', 1);
+    }
+    panel.innerHTML = html;
+
+    // Bind click events
+    panel.querySelectorAll('.route-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const idx = parseInt(card.dataset.idx);
+        State.selectedIdx = idx;
+        panel.querySelectorAll('.route-card').forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        // Redraw map for selected route
+        const r = idx === 0 ? best : backup;
+        MapService.drawRoute(r);
+      });
+    });
+  },
+
+  _renderCard(r, badge, color, cls, idx) {
+    const mode = getModeInfo(r.walkDist);
+    const routeStations = SHUTTLE_DATA.routes[r.routeKey];
+    const stopIdx = routeStations.indexOf(r.stationName);
+
+    let stationsHtml = '';
+    routeStations.forEach((s, i) => {
+      if (i === stopIdx) {
+        stationsHtml += `<span class="stop">▼${s}</span> `;
+      } else {
+        stationsHtml += `<span>${s}</span> `;
+      }
+    });
+
+    let timeHtml = '';
+    if (r.driveTime && r.driveTime > 0) {
+      const min = Math.round(r.driveTime / 60);
+      timeHtml = `<div style="margin-top:4px;font-size:13px;color:#555">🚌 班车约 <strong>${min}分钟</strong></div>`;
+    }
+
+    return `
+    <div class="route-card ${cls}" data-idx="${idx}" style="--route-color:${color}">
+      <span class="badge" style="background:${color}">${badge}</span>
+      <div class="route-name">
+        <span class="line-color-dot" style="background:${color}"></span>${r.routeKey}
+      </div>
+      <div class="station-name">🏁 下车点: <strong>${r.stationName}</strong></div>
+      <div class="dist-row">
+        <span class="dist-val">${formatDist(r.walkDist)}</span>
+        <span class="dist-unit">步行</span>
+        <span class="mode-tag ${mode.cls}">${mode.label}可达</span>
+      </div>
+      ${timeHtml}
+      <div class="route-detail">
+        <div style="margin-bottom:4px">线路站点:</div>
+        <div class="stations-list">${stationsHtml}</div>
+      </div>
+    </div>`;
+  },
+
+  showInitialState() {
+    const panel = document.getElementById('results-panel');
+    panel.className = 'empty';
+    panel.innerHTML = `<div class="empty-state"><div class="icon">🗺️</div><p>输入目的地<br>查看最佳班车线路推荐</p></div>`;
+  },
+
+  setSearchButtonEnabled(enabled) {
+    document.getElementById('search-btn').disabled = !enabled;
+  },
+};
+
+// ============================================================
+// 11. Map Drawing (for results) & Overview
+// ============================================================
+MapService.drawAllRoutes = function() {
+  const origin = SHUTTLE_DATA.origin;
+  const selectedKey = State.selectedRouteKey;
+  const endMarkers = {};
+
+  for (const [routeKey, stationNames] of Object.entries(SHUTTLE_DATA.routes)) {
+    if (routeKey === selectedKey) continue;
+    const color = ROUTE_COLOR_MAP[routeKey];
+    const path = [[origin[0], origin[1]]];
+    stationNames.forEach(name => {
+      const coords = SHUTTLE_DATA.stations[name];
+      if (coords) path.push([coords[0], coords[1]]);
+    });
+    if (path.length > 1) {
+      this.addPolyline(path, color, { weight: 3, opacity: 0.45, zIndex: 10 });
+    }
+    // Terminal markers only shown when no route is selected
+    if (!selectedKey) {
+      const lastName = stationNames[stationNames.length - 1];
+      const endCoord = SHUTTLE_DATA.stations[lastName];
+      if (endCoord) {
+        const key = endCoord[0].toFixed(5) + ',' + endCoord[1].toFixed(5);
+        if (!endMarkers[key]) {
+          endMarkers[key] = true;
+          const label = lastName.replace(/[（(].*?[)）]/g, '').trim();
+          this.addMarker(endCoord[0], endCoord[1], lastName, {
+            labelContent: '<span style="background:' + color + ';color:#fff;padding:3px 10px;border-radius:14px;font-size:11px">' + label + '</span>',
+            zIndex: 20,
+          });
+        }
+      }
+    }
+  }
+  // Origin marker
+  if (!selectedKey) {
+    this.addMarker(origin[0], origin[1], '起点: 顺义鑫桥中路3号院', {
+      labelContent: '起点',
+      zIndex: 30,
+      icon: new AMap.Icon({
+        size: new AMap.Size(36, 36),
+        image: '起点.png',
+        imageSize: new AMap.Size(36, 36),
+      }),
+    });
+  }
+};
+
+MapService.drawRoute = async function(result) {
+  State.selectedRouteKey = result.routeKey;
+  this.clearAll();
+  const selColor = SELECTED_ROUTE_COLOR;
+  const origin = SHUTTLE_DATA.origin;
+
+  // Build waypoints: origin → station1 → ... → stationN
+  const routeStations = SHUTTLE_DATA.routes[result.routeKey];
+  const waypoints = [[origin[0], origin[1]]];
+  routeStations.forEach(name => {
+    const coords = SHUTTLE_DATA.stations[name];
+    if (coords) waypoints.push([coords[0], coords[1]]);
+  });
+
+  // Find split index: alight station is at waypoints[stopIdx + 1]
+  const stopIdx = routeStations.indexOf(result.stationName);
+  const splitIdx = stopIdx >= 0 ? stopIdx + 1 : waypoints.length;
+
+  // Helper: chain driving between consecutive waypoints from start to end index
+  async function buildPath(startIdx, endIdx) {
+    const path = [];
+    let totalTime = 0;
+    for (let i = startIdx; i < endIdx; i++) {
+      const seg = await MapService.drivePath(
+        waypoints[i][0], waypoints[i][1],
+        waypoints[i+1][0], waypoints[i+1][1]
+      );
+      if (seg && seg.path && seg.path.length > 0) {
+        if (path.length === 0) { path.push(...seg.path); }
+        else { path.push(...seg.path.slice(1)); }
+        totalTime += seg.time || 0;
+      } else {
+        if (path.length === 0) path.push(waypoints[i]);
+        path.push(waypoints[i+1]);
+      }
+      if (i < endIdx - 1) await new Promise(r => setTimeout(r, 150));
+    }
+    return { path, time: totalTime };
+  }
+
+  // Build and draw path BEFORE alight station (full opacity)
+  const before = await buildPath(0, splitIdx);
+  const beforePath = before.path;
+  let driveTime = before.time; // seconds from origin to alight station
+
+  if (beforePath.length > 0) {
+    this.addPolyline(beforePath, selColor, { weight: 6, opacity: 0.85, zIndex: 60 });
+  }
+
+  // Build and draw path AFTER alight station (dimmed)
+  if (splitIdx < waypoints.length - 1) {
+    const after = await buildPath(splitIdx, waypoints.length - 1);
+    const afterPath = after.path;
+    if (afterPath.length > 0) {
+      this.addPolyline(afterPath, selColor, { weight: 4, opacity: 0.25, zIndex: 55, dashed: true });
+    }
+  }
+
+  // Add origin marker
+  this.addMarker(origin[0], origin[1], '起点: 顺义鑫桥中路3号院', {
+    labelContent: '起点 · 顺义鑫桥中路3号院',
+    zIndex: 200,
+    icon: new AMap.Icon({
+      size: new AMap.Size(36, 36),
+      image: '起点.png',
+      imageSize: new AMap.Size(36, 36),
+    }),
+  });
+
+  // Add station markers — show names for all stations on this route
+  const stopIcon = new AMap.Icon({
+    size: new AMap.Size(24, 32),
+    image: 'https://webapi.amap.com/theme/v1.3/markers/n/mark_r.png',
+    imageSize: new AMap.Size(24, 32),
+  });
+  const normalIcon = new AMap.Icon({
+    size: new AMap.Size(12, 12),
+    image: 'https://webapi.amap.com/theme/v1.3/markers/n/mark_bs.png',
+    imageSize: new AMap.Size(12, 12),
+  });
+
+  routeStations.forEach((name) => {
+    const coords = SHUTTLE_DATA.stations[name];
+    if (!coords) return;
+    const isStop = name === result.stationName;
+    this.addMarker(coords[0], coords[1], name, {
+      labelContent: isStop ? '▼ 下车: ' + name : name,
+      labelBg: isStop ? 'rgba(255,140,0,.75)' : undefined,
+      zIndex: isStop ? 210 : 100,
+      icon: isStop ? stopIcon : normalIcon,
+    });
+  });
+
+  // Add destination marker
+  if (State.destination) {
+    this.addMarker(State.destination.lng, State.destination.lat, State.destination.name, {
+      labelContent: '目的地: ' + State.destination.name,
+      zIndex: 200,
+      icon: new AMap.Icon({
+        size: new AMap.Size(24, 32),
+        image: 'https://webapi.amap.com/theme/v1.3/markers/n/mark_g.png',
+        imageSize: new AMap.Size(24, 32),
+      }),
+    });
+
+    // Draw last mile path
+    const mode = getModeInfo(result.walkDist);
+    const lastMilePath = await LastMileService.getPath(
+      result.stationLng, result.stationLat,
+      State.destination.lng, State.destination.lat,
+      mode.type
+    );
+
+    if (lastMilePath && lastMilePath.path && lastMilePath.path.length > 0) {
+      const modeColor = mode.type === 'walk' ? '#4caf50' : mode.type === 'ride' ? '#2196f3' : '#ff9800';
+      this.addPolyline(lastMilePath.path, modeColor, {
+        weight: 4,
+        opacity: 0.7,
+        dashed: true,
+        group: 'lastmile',
+        zIndex: 150,
+      });
+
+      // Add info window at the alight station
+      const modeLabel = mode.type === 'walk' ? '步行' : mode.type === 'ride' ? '骑行' : '公交';
+      this.addInfoWindow(
+        `<div style="padding:4px 8px;font-size:13px">
+          <strong>${result.stationName} 下车</strong><br>
+          ${modeLabel} ${formatDist(lastMilePath.distance)} · ${formatDuration(lastMilePath.duration)}
+        </div>`,
+        result.stationLng, result.stationLat
+      );
+    }
+
+    // Fit view
+    const allOverlays = [...State.routePolylines, ...State.lastMilePolylines, ...State.markers];
+    this.fitView(allOverlays);
+  } else {
+    const allOverlays = [...State.routePolylines, ...State.markers];
+    this.fitView(allOverlays);
+  }
+
+  // Store driving time and refresh cards
+  result.driveTime = driveTime;
+  UIManager.renderResults(State.results.slice(0, 2));
+};
+
+// ============================================================
+// 12. Main App Controller
+// ============================================================
+async function doSearch() {
+  const input = document.getElementById('search-input').value.trim();
+  if (!input) return;
+
+  showLoading();
+  UIManager.setSearchButtonEnabled(false);
+
+  try {
+    // Resolve destination
+    const dest = await SearchService.resolveDestination(input);
+    if (!dest) {
+      UIManager.renderResults(null);
+      hideLoading();
+      UIManager.setSearchButtonEnabled(true);
+      return;
+    }
+    State.destination = dest;
+
+    // Find best routes
+    const results = await RouteEngine.findBestRoutes(dest.lng, dest.lat);
+    State.results = results;
+    State.selectedIdx = 0;
+
+    // Render UI
+    UIManager.renderResults(results.slice(0, 2));
+
+    // Draw best route on map
+    if (results.length > 0) {
+      await MapService.drawRoute(results[0]);
+    }
+  } catch (err) {
+    console.error('Search error:', err);
+    UIManager.renderResults(null);
+  } finally {
+    hideLoading();
+    UIManager.setSearchButtonEnabled(true);
+  }
+}
+
+// ============================================================
+// 13. Zoom Slider
+// ============================================================
+function initZoomSlider() {
+  const track = document.getElementById('zoom-track');
+  const thumb = document.getElementById('zoom-thumb');
+  const fill = document.getElementById('zoom-fill');
+  const zoomInBtn = document.getElementById('zoom-in');
+  const zoomOutBtn = document.getElementById('zoom-out');
+  const map = State.map;
+  if (!map) return;
+
+  const MIN_ZOOM = 3;
+  const MAX_ZOOM = 18;
+
+  function updateUI(zoom) {
+    const pct = ((zoom - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM)) * 100;
+    thumb.style.bottom = pct + '%';
+    fill.style.height = pct + '%';
+  }
+
+  function zoomFromY(clientY) {
+    const rect = track.getBoundingClientRect();
+    const pct = 1 - (clientY - rect.top) / rect.height;
+    return Math.round(MIN_ZOOM + pct * (MAX_ZOOM - MIN_ZOOM));
+  }
+
+  // Init
+  updateUI(map.getZoom());
+
+  // Map zoom change → update slider
+  map.on('zoomend', () => updateUI(map.getZoom()));
+
+  // Buttons
+  zoomInBtn.addEventListener('click', () => map.zoomIn());
+  zoomOutBtn.addEventListener('click', () => map.zoomOut());
+
+  // Track click
+  track.addEventListener('click', (e) => {
+    if (e.target === thumb) return;
+    const z = zoomFromY(e.clientY);
+    map.setZoom(z);
+  });
+
+  // Thumb drag
+  let dragging = false;
+  thumb.addEventListener('mousedown', (e) => {
+    dragging = true;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const z = zoomFromY(e.clientY);
+    map.setZoom(z);
+  });
+  document.addEventListener('mouseup', () => { dragging = false; });
+
+  // Touch support
+  thumb.addEventListener('touchstart', (e) => {
+    dragging = true;
+    e.preventDefault();
+  });
+  document.addEventListener('touchmove', (e) => {
+    if (!dragging) return;
+    const z = zoomFromY(e.touches[0].clientY);
+    map.setZoom(z);
+  });
+  document.addEventListener('touchend', () => { dragging = false; });
+
+  // Mouse wheel on track
+  track.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (e.deltaY > 0) map.zoomOut();
+    else map.zoomIn();
+  });
+}
+
+// ============================================================
+// 14. Initialization
+// ============================================================
+async function initApp() {
+  try {
+    await loadAMapSDK();
+    await MapService.init();
+    console.log('App initialized. Routes:', ROUTE_KEYS.length, 'Stations:', Object.keys(SHUTTLE_DATA.stations).length);
+    MapService.drawAllRoutes();
+
+    // Bind enter key
+    document.getElementById('search-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') doSearch();
+    });
+
+    // Zoom slider
+    initZoomSlider();
+
+  } catch (err) {
+    console.error('Init error:', err);
+    document.getElementById('results-panel').innerHTML =
+      `<div class="empty-state"><p style="color:#c62828">地图加载失败，请检查网络连接后刷新页面</p></div>`;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', initApp);
+</script>
+</body>
+</html>
