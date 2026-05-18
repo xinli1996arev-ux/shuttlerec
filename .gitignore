@@ -1,3 +1,6 @@
 *.py
 *.json
 collect_coords.html
+19.png
+.DS_Store
+index_v1.html
